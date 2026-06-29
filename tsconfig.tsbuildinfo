@@ -1,1 +1,0 @@
-{"root":["./src/lemma-client.ts","./src/main.tsx","./src/vite-env.d.ts","./src/components/Layout.tsx","./src/lib/idea-helpers.ts","./src/lib/refresh-bus.ts","./src/pages/AIWriter.tsx","./src/pages/ContentQueue.tsx","./src/pages/Dashboard.tsx","./src/pages/Ideas.tsx","./src/pages/KnowledgeBase.tsx","./src/pages/Review.tsx","./src/pages/Themes.tsx"],"version":"5.9.3"}
