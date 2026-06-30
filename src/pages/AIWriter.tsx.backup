@@ -31,20 +31,11 @@ export function AIWriter() {
     filters: [{ field: 'status', op: 'ne', value: 'archived' }]
   })
 
-  const { records: existingContent, refresh: refreshContent } = useRecords({
-    client: lemmaClient, podId, tableName: 'content_items', limit: 20,
-    sort: [{ field: 'created_at', direction: 'desc' }]
-  })
-
-  // Auto-refresh records when they change
+  // Auto-refresh ideas dropdown when ideas table changes
   useEffect(() => {
-    const unsubIdeas = onTableChange('ideas', () => refreshIdeas())
-    const unsubContent = onTableChange('content_items', () => refreshContent())
-    return () => {
-      unsubIdeas()
-      unsubContent()
-    }
-  }, [refreshIdeas, refreshContent])
+    const unsub = onTableChange('ideas', () => refreshIdeas())
+    return unsub
+  }, [refreshIdeas])
 
   const createContent = useRecordCreate(lemmaClient, podId)
 
@@ -76,12 +67,6 @@ export function AIWriter() {
       const idMatch = responseText.match(/content_item_id[:\s]+([a-f0-9-]+)/i)
       if (idMatch) {
         setSavedId(idMatch[1])
-      } else {
-        // Try to get the ID from saved content
-        const response = await lemmaClient.records.list('content_items', { limit: 1 })
-        if (response && response.items.length > 0) {
-          setSavedId(response.items[0].id)
-        }
       }
     } catch (err) {
       console.error('Generation failed:', err)

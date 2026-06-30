@@ -19,7 +19,7 @@
  */
 
 type TableName = string
-type ChangeHandler = () => void
+type ChangeHandler = (payload?: any) => void
 
 const listeners = new Map<TableName, Set<ChangeHandler>>()
 const TABLE_CHANGE_EVENT = 'lemma:table-changed'

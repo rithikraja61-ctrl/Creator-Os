@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRecords, useRecordCreate, useRecordUpdate } from 'lemma-sdk/react'
 import { lemmaClient } from '../lemma-client'
-import { Columns3, Plus, X, ArrowRight, CheckCircle, Clock, Calendar, Send, Eye, GripVertical } from 'lucide-react'
+import { Columns3, Plus, X, ArrowRight, CheckCircle, Clock, Calendar, Send, Eye } from 'lucide-react'
 import { notifyTableChanged, onTableChange } from '../lib/refresh-bus'
 
 const STATUSES = ['draft', 'review', 'approved', 'scheduled', 'published'] as const
@@ -25,11 +25,9 @@ export function ContentQueue() {
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ title: '', content_type: 'linkedin_post', body: '', idea_id: '' })
   const [selectedItem, setSelectedItem] = useState<any | null>(null)
-  const [draggedItem, setDraggedItem] = useState<any | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
 
   const { records: items, isLoading, refresh } = useRecords({
-    client: lemmaClient, podId, tableName: 'content_items', limit: 500,
+    client: lemmaClient, podId, tableName: 'content_items', limit: 200,
     sort: [{ field: 'updated_at', direction: 'desc' }]
   })
 
@@ -55,8 +53,9 @@ export function ContentQueue() {
     if (selectedItem?.id === item.id) {
       setSelectedItem({ ...selectedItem, status: newStatus })
     }
-    notifyTableChanged('content_items')
-  }
+    refresh()
+      notifyTableChanged('content_items')
+    }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -83,46 +82,6 @@ export function ContentQueue() {
     }
   }
 
-  async function handleDelete(item: any) {
-    if (confirm('Delete this content item? This action cannot be undone.')) {
-      try {
-        await lemmaClient.records.delete('content_items', item.id)
-        if (selectedItem?.id === item.id) {
-          setSelectedItem(null)
-        }
-        notifyTableChanged('content_items')
-      } catch (err) {
-        console.error('Delete failed:', err)
-      }
-    }
-  }
-
-  function handleDragStart(item: any, e: React.DragEvent) {
-    setDraggedItem(item)
-    setIsDragging(true)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  function handleDragEnd() {
-    setDraggedItem(null)
-    setIsDragging(false)
-  }
-
-  function handleDrop(colStatus: string, e: React.DragEvent) {
-    e.preventDefault()
-    if (!draggedItem) return
-    
-    const currentIndex = STATUSES.indexOf(draggedItem.status as Status)
-    const targetIndex = STATUSES.indexOf(colStatus as Status)
-    
-    if (currentIndex !== targetIndex) {
-      moveItem(draggedItem, colStatus)
-    }
-    
-    setDraggedItem(null)
-    setIsDragging(false)
-  }
-
   function getStatusIndex(status: string): number {
     return STATUSES.indexOf(status as Status)
   }
@@ -141,7 +100,7 @@ export function ContentQueue() {
 
       {isLoading ? (
         <div className="card">
-          <div className="skeleton" style={{ height: 400 }} />
+          <div className="skeleton" style={{ height: 200 }} />
         </div>
       ) : items.length === 0 ? (
         <div className="card">
@@ -152,74 +111,30 @@ export function ContentQueue() {
           </div>
         </div>
       ) : (
-        <div className="kanban" style={{ userSelect: 'none' }}>
+        <div className="kanban">
           {STATUSES.map(status => {
             const config = STATUS_CONFIG[status]
             const cols = grouped[status] || []
-            
             return (
-              <div
-                key={status}
-                className="kanban-col"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => handleDrop(status, e)}
-                style={{ 
-                  border: draggedItem && draggedItem.status !== status ? '2px dashed var(--accent)' : '1px solid var(--line)',
-                  backgroundColor: draggedItem && draggedItem.status === status ? 'var(--accent-lighter)' : 'transparent'
-                }}
-              >
+              <div key={status} className="kanban-col">
                 <div className="kanban-col-header" style={{ color: config.color }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span>{config.label}</span>
-                    <span className="kanban-col-count">{cols.length}</span>
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.8 }}>
-                    Drop {draggedItem && draggedItem.status !== status ? 'here to move' : ''}
-                  </span>
+                  <span>{config.label}</span>
+                  <span className="kanban-col-count">{cols.length}</span>
                 </div>
-                <div style={{ minHeight: 100, padding: 8 }}>
+                <div style={{ minHeight: 100 }}>
                   {cols.map((item: any) => (
-                    <div
-                      key={item.id}
-                      className={`kanban-card ${selectedItem?.id === item.id ? 'selected' : ''}`}
+                    <div key={item.id} className={`kanban-card ${selectedItem?.id === item.id ? 'selected' : ''}`}
                       onClick={() => setSelectedItem(item)}
-                      draggable
-                      onDragStart={(e) => handleDragStart(item, e)}
-                      onDragEnd={handleDragEnd}
-                      style={{ cursor: 'grab' }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                        <div className="kanban-card-title" style={{ flex: 1, marginRight: 8 }}>{item.title || 'Untitled'}</div>
-                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                          <button
-                            className="btn btn-xs btn-ghost"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDelete(item)
-                            }}
-                            title="Delete item"
-                            style={{ color: 'var(--danger)', opacity: 0.7 }}
-                          >
-                            <X size={12} />
-                          </button>
-                          <GripVertical size={12} style={{ color: 'var(--ink-muted)', cursor: 'grab', opacity: 0.5 }} />
-                        </div>
-                      </div>
+                      style={{ cursor: 'pointer' }}>
+                      <div className="kanban-card-title">{item.title || 'Untitled'}</div>
                       <div className="tag-group" style={{ marginBottom: 4 }}>
                         <span className="tag">{item.content_type}</span>
                       </div>
-                      <div className="kanban-card-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="kanban-card-meta" style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>Score: {item.ai_score ? `${Math.round(item.ai_score * 100)}%` : '—'}</span>
                         {getStatusIndex(status) < STATUSES.length - 1 && (
-                          <button
-                            className="btn btn-xs btn-ghost"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              moveItem(item, STATUSES[getStatusIndex(status) + 1])
-                            }}
-                            title={`Move to ${STATUSES[getStatusIndex(status) + 1]}`}
-                            style={{ color: 'var(--accent)' }}
-                          >
+                          <button className="btn btn-xs btn-ghost" onClick={e => { e.stopPropagation(); moveItem(item, STATUSES[getStatusIndex(status) + 1]) }}
+                            title={`Move to ${STATUSES[getStatusIndex(status) + 1]}`}>
                             <ArrowRight size={12} />
                           </button>
                         )}

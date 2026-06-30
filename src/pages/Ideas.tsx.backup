@@ -17,7 +17,7 @@ export function Ideas() {
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const { records: ideas, isLoading, refresh } = useRecords({
-    client: lemmaClient, podId, tableName: 'ideas', limit: 200,
+    client: lemmaClient, podId, tableName: 'ideas', limit: 100,
     sort: [{ field: 'created_at', direction: 'desc' }]
   })
 
@@ -53,15 +53,18 @@ export function Ideas() {
   // ---- Helper: fetch URL content via a simple proxy ----
   async function fetchUrlContent(url: string): Promise<string> {
     try {
-      // Use the lemma-client's fetch with no-cors mode to try to access the URL
-      const resp = await fetch(url, { mode: 'no-cors' })
+      // Try direct fetch first (may fail CORS for many sites)
+      const resp = await fetch(url, { mode: 'cors' })
       if (resp.ok) {
-        // If we get a response, we might still need to handle CORS properly
-        // For now, return a placeholder indicating content was fetched
-        return `[URL: ${url}]\n\nContent accessed via Lemma fetch. You can visit this URL for the original content.`
+        const text = await resp.text()
+        // Extract text from HTML
+        const div = document.createElement('div')
+        div.innerHTML = text
+        const bodyText = div.textContent || div.innerText || ''
+        return bodyText.substring(0, 5000).trim()
       }
     } catch {
-      // Any CORS or network error — use stored URL as content
+      // CORS or network error — use stored URL as content
     }
     return `[URL: ${url}]\n\nContent could not be fetched automatically. Visit the URL to read the original content.`
   }
@@ -297,7 +300,7 @@ export function Ideas() {
               <textarea className="form-textarea" value={form.content}
                 placeholder={'Paste chat transcript here...\n\nFormat: Messages with speaker names like:\nAlice: I think we should focus on the UI\nBob: Agreed, but let\'s also check the API'}
                 onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                style={{ minHeight: 120 }} />
+                style={{ minHeight: 200 }} />
             </div>
           </>
         )
@@ -313,24 +316,37 @@ export function Ideas() {
             </div>
             <div className="form-group">
               <label className="form-label">Upload Screenshot</label>
-              <input type="file" accept="image/*" onChange={handleFileSelect}
-                ref={imageInputRef} style={{ display: 'none' }} />
-              <button type="button" className="btn btn-sm" onClick={() => imageInputRef.current?.click()}
-                style={{ width: '100%', marginBottom: 8 }}>
-                <Upload size={16} /> Upload Screenshot
-              </button>
-              {uploadedFile && (
-                <div style={{ fontSize: 12, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <FileText size={14} /> {uploadedFile.name}
-                </div>
-              )}
+              <div className="upload-zone" onClick={() => imageInputRef.current?.click()}
+                style={{
+                  border: '2px dashed var(--line)', borderRadius: 8, padding: 24,
+                  textAlign: 'center', cursor: 'pointer', background: uploadedFile ? 'var(--accent-lighter)' : 'var(--bg)'
+                }}>
+                {uploadedFile ? (
+                  <div>
+                    <Paperclip size={24} style={{ color: 'var(--accent)' }} />
+                    <p style={{ fontWeight: 500, marginTop: 8 }}>{uploadedFile.name}</p>
+                    <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                      {(uploadedFile.size / 1024).toFixed(0)} KB
+                      {uploadedFilePath ? ' — Uploaded to Lemma Files' : ' — Ready to upload'}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <Upload size={24} style={{ color: 'var(--ink-muted)' }} />
+                    <p style={{ marginTop: 8 }}>Click to select a screenshot</p>
+                    <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>PNG, JPG, GIF up to 10MB</p>
+                  </div>
+                )}
+                <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={handleFileSelect} />
+              </div>
             </div>
             <div className="form-group">
               <label className="form-label">Description (optional)</label>
               <textarea className="form-textarea" value={form.content}
                 placeholder="What does this screenshot show?"
                 onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                style={{ minHeight: 80 }} />
+                style={{ minHeight: 60 }} />
             </div>
           </>
         )
@@ -346,24 +362,37 @@ export function Ideas() {
             </div>
             <div className="form-group">
               <label className="form-label">Upload PDF</label>
-              <input type="file" accept="application/pdf" onChange={handleFileSelect}
-                ref={fileInputRef} style={{ display: 'none' }} />
-              <button type="button" className="btn btn-sm" onClick={() => fileInputRef.current?.click()}
-                style={{ width: '100%', marginBottom: 8 }}>
-                <Upload size={16} /> Upload PDF
-              </button>
-              {uploadedFile && (
-                <div style={{ fontSize: 12, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <FileText size={14} /> {uploadedFile.name}
-                </div>
-              )}
+              <div className="upload-zone" onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: '2px dashed var(--line)', borderRadius: 8, padding: 24,
+                  textAlign: 'center', cursor: 'pointer', background: uploadedFile ? 'var(--accent-lighter)' : 'var(--bg)'
+                }}>
+                {uploadedFile ? (
+                  <div>
+                    <FileText size={24} style={{ color: 'var(--accent)' }} />
+                    <p style={{ fontWeight: 500, marginTop: 8 }}>{uploadedFile.name}</p>
+                    <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                      {(uploadedFile.size / 1024).toFixed(0)} KB
+                      {uploadedFilePath ? ' — Uploaded to Lemma Files' : ' — Ready to upload'}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <FileText size={24} style={{ color: 'var(--ink-muted)' }} />
+                    <p style={{ marginTop: 8 }}>Click to select a PDF</p>
+                    <p style={{ fontSize: 12, color: 'var(--ink-muted)' }}>PDF up to 20MB</p>
+                  </div>
+                )}
+                <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }}
+                  onChange={handleFileSelect} />
+              </div>
             </div>
             <div className="form-group">
-              <label className="form-label">Initial thoughts about this document</label>
+              <label className="form-label">Notes (optional)</label>
               <textarea className="form-textarea" value={form.content}
                 placeholder="Any initial thoughts about this document?"
                 onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                style={{ minHeight: 80 }} />
+                style={{ minHeight: 60 }} />
             </div>
           </>
         )
@@ -373,12 +402,22 @@ export function Ideas() {
     }
   }
 
+  const sourceIcons: Record<string, React.ReactNode> = {
+    manual: <FileText size={14} />,
+    url: <Link2 size={14} />,
+    bookmark: <Link2 size={14} />,
+    tweet: <Twitter size={14} />,
+    chat: <MessageSquare size={14} />,
+    screenshot: <Upload size={14} />,
+    pdf: <FileText size={14} />,
+  }
+
   return (
     <div>
       <div className="page-header">
         <div>
-          <h1>Ideas</h1>
-          <p>Capture your ideas, inspiration, and inspiration sources</p>
+          <h1>Idea Inbox</h1>
+          <p>Capture and organize your creative ideas</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowModal(true)}>
           <Plus size={16} /> New Idea
@@ -388,69 +427,68 @@ export function Ideas() {
       {isLoading ? (
         <div className="card">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[1,2,3,4,5].map(i => <div key={i} className="skeleton" style={{ height: 56 }} />)}
+            {[1,2,3,4,5].map(i => <div key={i} className="skeleton" style={{ height: 48 }} />)}
           </div>
         </div>
       ) : ideas.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <Inbox size={40} />
-            <h3>No ideas captured yet</h3>
-            <p>Start by capturing your first idea using the "New Idea" button</p>
-            <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 8 }}>You can capture notes, URLs, tweets, screenshots, PDFs, and chat transcripts</p>
+            <h3>Your idea inbox is empty</h3>
+            <p>Capture notes, URLs, screenshots, bookmarks, and more</p>
+            <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowModal(true)}>
+              <Plus size={16} /> Capture your first idea
+            </button>
           </div>
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-secondary)' }}>All Ideas</span>
-            <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{ideas.length} ideas total</span>
-          </div>
-          <div>
-            {ideas.map((idea: any) => {
-              const sourceIcons = {
-                'manual': <FileText size={14} />,
-                'url': <Link2 size={14} />,
-                'bookmark': <Paperclip size={14} />,
-                'tweet': <Twitter size={14} />,
-                'chat': <MessageSquare size={14} />,
-                'screenshot': <Upload size={14} />,
-                'pdf': <FileText size={14} />,
-              }
-              
-              return (
-                <div key={idea.id}
-                  style={{ padding: '12px 16px', borderBottom: '1px solid var(--line-subtle)', cursor: 'pointer' }}
-                  onClick={() => {
-                    // Handle idea selection if needed
-                  }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ color: 'var(--ink-muted)', flexShrink: 0 }}>
-                      {sourceIcons[idea.source_type as keyof typeof sourceIcons] || <FileText size={14} />}
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ width: 30 }}></th>
+                <th>Title</th>
+                <th>Content</th>
+                <th>Tags</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th style={{ width: 60 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {ideas.map((idea: any) => (
+                <tr key={idea.id}>
+                  <td style={{ color: 'var(--ink-muted)' }}>
+                    {sourceIcons[idea.source_type] || <FileText size={14} />}
+                  </td>
+                  <td style={{ fontWeight: 500 }}>{idea.title || 'Untitled'}</td>
+                  <td style={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-muted)' }}>
+                    {(idea.content || '').substring(0, 80)}{(idea.content || '').length > 80 ? '...' : ''}
+                  </td>
+                  <td>
+                    <div className="tag-group">
+                      {(() => {
+                        try {
+                          const tags = typeof idea.tags === 'string' ? JSON.parse(idea.tags) : idea.tags
+                          return Array.isArray(tags) ? tags.slice(0, 3).map((t: string) => (
+                            <span key={t} className="tag">{t}</span>
+                          )) : null
+                        } catch { return null }
+                      })()}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 2 }}>{idea.title || 'Untitled'}</div>
-                      <div style={{ fontSize: 12, color: 'var(--ink-muted)', maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {(idea.content || '').substring(0, 80)}{(idea.content || '').length > 80 ? '...' : ''}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="tag tag-sm">{idea.source_type}</span>
-                      <span className={`badge badge-${idea.status}`} style={{ fontSize: 10, padding: '2px 6px' }}>{idea.status}</span>
-                      <button className="btn btn-sm btn-ghost" onClick={(e) => {
-                        e.stopPropagation()
-                        deleteIdea.mutateAsync({ tableName: 'ideas', recordId: idea.id }).then(() => { refresh(); notifyTableChanged('ideas') })
-                      }}
-                        style={{ color: 'var(--ink-muted)' }}
-                        title="Delete idea">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                  </td>
+                  <td><span className={`badge badge-${idea.status}`}>{idea.status}</span></td>
+                  <td><span className="tag tag-sm">{idea.source_type}</span></td>
+                  <td>
+                    <button className="btn btn-sm btn-ghost" onClick={() => deleteIdea.mutateAsync({ tableName: 'ideas', recordId: idea.id }).then(() => { refresh(); notifyTableChanged('ideas') })}
+                      style={{ color: 'var(--ink-muted)' }}>
+                      <X size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

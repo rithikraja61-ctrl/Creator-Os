@@ -2,14 +2,12 @@ import { useState, useEffect } from 'react'
 import { useRecords } from 'lemma-sdk/react'
 import { lemmaClient } from '../lemma-client'
 import { onTableChange } from '../lib/refresh-bus'
-import { Palette, TrendingUp, Sparkles, CheckCircle, AlertCircle, FolderOpen, FileText, Eye, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { Palette, TrendingUp, Sparkles, CheckCircle, AlertCircle } from 'lucide-react'
 
 export function Themes() {
   const podId = lemmaClient.podId
   const [isClustering, setIsClustering] = useState(false)
   const [clusterResult, setClusterResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-  const [expandedTheme, setExpandedTheme] = useState<string | null>(null)
-  const [themeWorkspace, setThemeWorkspace] = useState<Record<string, any>>({})
 
   const { records: themes, isLoading, refresh } = useRecords({
     client: lemmaClient, podId, tableName: 'themes', limit: 50,
@@ -20,16 +18,7 @@ export function Themes() {
     client: lemmaClient, podId, tableName: 'ideas', limit: 500
   })
 
-  const { records: content, refresh: refreshContent } = useRecords({
-    client: lemmaClient, podId, tableName: 'content_items', limit: 500
-  })
-
-  const { records: sources, refresh: refreshSources } = useRecords({
-    client: lemmaClient, podId, tableName: 'sources', limit: 500
-  })
-
   const ideasById = new Map(ideas.map((i: any) => [i.id, i]))
-  const contentById = new Map(content.map((c: any) => [c.id, c]))
 
   // Auto-refresh when themes or ideas table changes
   useEffect(() => {
@@ -42,78 +31,11 @@ export function Themes() {
     return unsub
   }, [refreshIdeas])
 
-  useEffect(() => {
-    const unsub = onTableChange('content_items', () => refreshContent())
-    return unsub
-  }, [refreshContent])
-
-  useEffect(() => {
-    const unsub = onTableChange('sources', () => refreshSources())
-    return unsub
-  }, [refreshSources])
-
-  // Build workspace data for expanded themes
-  useEffect(() => {
-    if (themes.length === 0 || ideas.length === 0 || content.length === 0) {
-      return
-    }
-
-    const workspace: Record<string, any> = {}
-
-    themes.forEach((theme: any) => {
-      try {
-        let ids: string[] = []
-
-        if (theme.idea_ids) {
-          if (typeof theme.idea_ids === 'string') {
-            try {
-              const parsed = JSON.parse(theme.idea_ids)
-              ids = Array.isArray(parsed) ? parsed : []
-            } catch {
-              ids = []
-            }
-          } else if (Array.isArray(theme.idea_ids)) {
-            ids = theme.idea_ids
-          }
-        }
-
-        const workspaceIdeas = ids.map((id: string) => ideasById.get(id)).filter(Boolean)
-        const workspaceFiles: any[] = []
-        const workspaceContent: any[] = []
-
-        workspaceIdeas.forEach((idea: any) => {
-          if (idea.source_ref && idea.source_ref.startsWith('/')) {
-            workspaceFiles.push({
-              name: idea.title || 'Unnamed file',
-              title: `Attached to: ${idea.title || 'Idea'}`
-            })
-          }
-
-          content.filter((c: any) => c.idea_id === idea.id).forEach((c: any) => {
-            workspaceContent.push(c)
-          })
-        })
-
-        workspace[theme.id] = {
-          ideas: workspaceIdeas,
-          files: workspaceFiles,
-          content: workspaceContent
-        }
-      } catch {
-        workspace[theme.id] = { ideas: [], files: [], content: [] }
-      }
-    })
-
-    setThemeWorkspace(workspace)
-  }, [themes, ideas, content])
-
   function parseIds(theme: any): string[] {
     try {
       const ids = typeof theme.idea_ids === 'string' ? JSON.parse(theme.idea_ids) : theme.idea_ids
       return Array.isArray(ids) ? ids : []
-    } catch {
-      return []
-    }
+    } catch { return [] }
   }
 
   function parseKeywords(theme: any): string[] {
@@ -125,55 +47,25 @@ export function Themes() {
 
   async function handleCluster() {
     if (isClustering) return
-
-    // BUG 1 FIX: Guard against zero ideas before clustering
-    if (!ideas || ideas.length === 0) {
-      setClusterResult({ type: 'error', message: 'No ideas available. Add ideas before clustering.' })
-      return
-    }
-
     setIsClustering(true)
     setClusterResult(null)
-
     try {
-      // Step 1: Create a conversation for the theme_clusterer agent
-      const conversation = await lemmaClient.conversations.createForAgent('theme_clusterer', {
-        title: 'Theme Clustering'
-      })
-
-      // Step 2: Send the prompt message
-      await lemmaClient.conversations.messages.send(conversation.id, {
-        content: 'CRITICAL: Delete ALL existing themes from the themes table first. ' +
-        'Then read all non-archived ideas. If there are zero ideas, stop and ' +
-        'report that all themes were deleted and no new themes were created. ' +
-        'Otherwise group similar ideas into coherent themes, create fresh ' +
-        'theme records, and return a detailed summary of what was deleted ' +
-        'and what was created.'
-      })
-
-      // Step 3: Poll until the conversation is complete.
-      // Never render the raw conversation object to the user.
-      let conv = conversation
-      while (conv.status !== 'COMPLETED' && conv.status !== 'FAILED') {
-        await new Promise(r => setTimeout(r, 1000))
-        conv = await lemmaClient.conversations.get(conversation.id)
-      }
-
-      if (conv.status === 'FAILED') {
-        throw new Error(conv.last_run_error || 'Agent failed during clustering')
-      }
-
-      // Read the final assistant response from the conversation
-      const messages = await lemmaClient.conversations.messages.list(conversation.id, { limit: 5 })
-      const lastAssistant = messages.items
-        ?.filter(m => m.role === 'assistant' && m.kind === 'TEXT')
-        .pop()
-
-      const summary = lastAssistant?.text || 'Clustering completed successfully.'
-
+      // The theme_clusterer agent has write access to the themes table
+      // It reads ideas, clusters them, and creates/updates theme records directly
+      const result = await lemmaClient.agents.run('theme_clusterer',
+        'Analyze all non-archived ideas from the ideas table. ' +
+        'Group similar ideas into coherent themes. ' +
+        'Create new theme records in the themes table and update existing ones. ' +
+        'Remove themes that no longer have any associated ideas. ' +
+        'Return a detailed summary of what was created, updated, or removed.'
+      )
+      // The agent's response contains the clustering summary
+      const summary = typeof result === 'string' ? result :
+                      (result as any)?.response || (result as any)?.output || JSON.stringify(result)
       setClusterResult({ type: 'success', message: summary })
       refresh()
     } catch (err) {
+      console.error('Clustering failed:', err)
       setClusterResult({
         type: 'error',
         message: `Clustering failed: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -183,27 +75,6 @@ export function Themes() {
     }
   }
 
-  function expandTheme(theme: any) {
-    const newExpanded = expandedTheme === theme.id ? null : theme.id
-    setExpandedTheme(newExpanded)
-  }
-
-  function formatAgentSummary(text: string): React.ReactNode {
-    const lines = text.split('\n')
-    const summaryStart = Math.max(
-      text.lastIndexOf('## ✅ Clustering Summary'),
-      text.lastIndexOf('## Summary'),
-      text.lastIndexOf('Themes'),
-    )
-    if (summaryStart >= 0) {
-      return text.substring(summaryStart)
-    }
-    if (text.length > 1000) {
-      return '…' + text.substring(text.length - 800)
-    }
-    return text
-  }
-
   return (
     <div>
       <div className="page-header">
@@ -211,24 +82,12 @@ export function Themes() {
           <h1>Themes</h1>
           <p>Automatically discovered themes and trends from your ideas</p>
         </div>
-        {/* BUG 1 FIX: Disable the Cluster button when there are zero ideas */}
-        <button className="btn btn-primary" onClick={handleCluster}
-          disabled={isClustering || !ideas || ideas.length === 0}
+        <button className="btn btn-primary" onClick={handleCluster} disabled={isClustering}
           title="Run theme clustering on all non-archived ideas">
           <Sparkles size={16} />
           {isClustering ? 'Clustering...' : 'Cluster Themes'}
         </button>
       </div>
-
-      {/* Show a loading indicator while clustering is in progress */}
-      {isClustering && !clusterResult && (
-        <div className="card" style={{ marginBottom: 16, padding: 12, background: 'var(--accent-lighter)', border: '1px solid var(--accent-lighter)' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontSize: 13 }}>Clustering ideas...</span>
-          </div>
-        </div>
-      )}
 
       {clusterResult && (
         <div className="card" style={{
@@ -261,9 +120,7 @@ export function Themes() {
       {isLoading ? (
         <div className="card">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[1, 2, 3].map(i => (
-              <div key={i} className="skeleton" style={{ height: 80 }} />
-            ))}
+            {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 80 }} />)}
           </div>
         </div>
       ) : themes.length === 0 ? (
@@ -271,7 +128,7 @@ export function Themes() {
           <div className="empty-state">
             <Palette size={40} />
             <h3>No themes yet</h3>
-            <p>Capture ideas first, then click Cluster Themes.</p>
+            <p>Click "Cluster Themes" to analyze your ideas and discover patterns. The AI will group related ideas into themes, detect trends, and save them here.</p>
             {ideas.length > 0 && (
               <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 4 }}>
                 {ideas.length} idea{ideas.length !== 1 ? 's' : ''} available for clustering
@@ -294,17 +151,18 @@ export function Themes() {
             const ids = parseIds(theme)
             const keywords = parseKeywords(theme)
             const score = theme.trend_score || 0
-            const linkedIdeas = ids.map((id: string) => ideasById.get(id)).filter(Boolean)
+            const linkedIdeas = ids.map(id => ideasById.get(id)).filter(Boolean)
             const isExpanded = expandedTheme === theme.id
-            const workspace = themeWorkspace[theme.id] || { ideas: [], files: [], content: [] }
-            const workspaceIdeas = workspace.ideas || []
-            const workspaceFiles = workspace.files || []
-            const workspaceContent = workspace.content || []
-            const wsContentCount = content.filter((c: any) => c.idea_id && ids.includes(c.idea_id)).length
+            const workspace = themeWorkspace[theme.id]
+            const workspaceIdeas = workspace?.ideas || []
+            const workspaceFiles = workspace?.files || []
+            const workspaceContent = workspace?.content || []
+            const wsContentCount = (allContent as any[]).filter((c: any) => c.idea_id && ids.includes(c.idea_id)).length
             const wsFileCount = linkedIdeas.filter((i: any) => i.source_ref && i.source_ref.startsWith('/')).length
 
             return (
               <div key={theme.id}>
+                {/* Theme Card — clickable to expand workspace */}
                 <div
                   className="card"
                   style={{ cursor: 'pointer', borderLeft: isExpanded ? '3px solid var(--accent)' : undefined }}
@@ -325,9 +183,7 @@ export function Themes() {
                       )}
                       {keywords.length > 0 && (
                         <div className="tag-group" style={{ marginBottom: 8 }}>
-                          {keywords.map((kw: string) => (
-                            <span key={kw} className="tag tag-sm">{kw}</span>
-                          ))}
+                          {keywords.map((kw: string) => <span key={kw} className="tag tag-sm">{kw}</span>)}
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--ink-muted)' }}>
@@ -341,27 +197,19 @@ export function Themes() {
                       style={{ flexShrink: 0 }}
                       onClick={(e) => { e.stopPropagation(); expandTheme(theme) }}
                     >
-                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      <FolderOpen size={14} />
                     </button>
                   </div>
                 </div>
 
+                {/* Theme Workspace — File System View */}
                 {isExpanded && (
                   <div className="card" style={{ marginTop: 2, padding: 16, borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <h3 style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <FolderOpen size={16} style={{ color: 'var(--accent)' }} />
-                          {theme.name} — Workspace
-                        </h3>
-                        <button
-                          onClick={() => { setExpandedTheme(null) }}
-                          className="btn btn-sm btn-ghost"
-                          style={{ color: 'var(--ink-muted)' }}
-                        >
-                          Collapse
-                        </button>
-                      </div>
+                      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <FolderOpen size={16} style={{ color: 'var(--accent)' }} />
+                        {theme.name} — Workspace
+                      </h3>
 
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
                         {/* Column 1: Ideas */}
@@ -454,4 +302,24 @@ export function Themes() {
       )}
     </div>
   )
+}
+
+/** Extract the readable summary from the agent's verbose output */
+function formatAgentSummary(text: string): React.ReactNode {
+  // The agent response includes tool calls and results. Try to extract just the summary part.
+  const lines = text.split('\n')
+  // Find where the actual summary starts (after the last tool call)
+  const summaryStart = Math.max(
+    text.lastIndexOf('## ✅ Clustering Summary'),
+    text.lastIndexOf('## Summary'),
+    text.lastIndexOf('Themes'),
+  )
+  if (summaryStart >= 0) {
+    return text.substring(summaryStart)
+  }
+  // If no section marker found, show the last ~800 chars (the summary portion)
+  if (text.length > 1000) {
+    return '…' + text.substring(text.length - 800)
+  }
+  return text
 }

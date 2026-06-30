@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useRecords } from 'lemma-sdk/react'
 import { lemmaClient } from '../lemma-client'
-import { onTableChange, notifyTableChanged } from '../lib/refresh-bus'
+import { onTableChange } from '../lib/refresh-bus'
 import { Lightbulb, FileText, Sparkles, TrendingUp, ArrowRight, Palette, CheckSquare } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -22,7 +22,7 @@ function StatCard({ icon, value, label, color }: { icon: React.ReactNode; value:
 export function Dashboard() {
   const podId = lemmaClient.podId
 
-  // ── Real-time stats from backend ──
+  // ── Stats: use total count from backend (limit=1 is enough to get the count) ──
   const { total: ideasTotal, isLoading: ideasLoading, refresh: refreshIdeas } = useRecords({
     client: lemmaClient, podId, tableName: 'ideas', limit: 1,
   })
@@ -38,7 +38,7 @@ export function Dashboard() {
     filters: [{ field: 'status', op: 'eq', value: 'review' }],
   })
 
-  // ── Real-time lists from backend ──
+  // ── Lists ──
   const { records: ideas, isLoading: ideasListLoading, refresh: refreshIdeasList } = useRecords({
     client: lemmaClient, podId, tableName: 'ideas', limit: 5,
     sort: [{ field: 'created_at', direction: 'desc' }],
@@ -58,31 +58,15 @@ export function Dashboard() {
     sort: [{ field: 'trend_score', direction: 'desc' }],
   })
 
-  // ── Global refresh event system ──
+  // ── Auto-refresh when tables change ──
   useEffect(() => {
-    const unsubIdeas = onTableChange('ideas', () => {
-      refreshIdeas()
-      refreshIdeasList()
+    const unsub = onTableChange(['ideas', 'content_items', 'themes'], () => {
+      refreshIdeas(); refreshIdeasList()
+      refreshDrafts(); refreshDraftsList()
+      refreshReviews(); refreshReviewsList()
+      refreshThemes(); refreshThemesList()
     })
-    const unsubDrafts = onTableChange('content_items', (payload) => {
-      if (payload?.newRecord?.status === 'draft') refreshDrafts()
-      if (payload?.newRecord?.status === 'draft') refreshDraftsList()
-    })
-    const unsubReviews = onTableChange('content_items', (payload) => {
-      if (payload?.newRecord?.status === 'review') refreshReviews()
-      if (payload?.newRecord?.status === 'review') refreshReviewsList()
-    })
-    const unsubThemes = onTableChange('themes', () => {
-      refreshThemes()
-      refreshThemesList()
-    })
-
-    return () => {
-      unsubIdeas()
-      unsubDrafts()
-      unsubReviews()
-      unsubThemes()
-    }
+    return unsub
   }, [])
 
   const isLoading = ideasLoading || draftsLoading || reviewsLoading || themesLoading
@@ -217,12 +201,12 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid-2">
+      <div className="grid-2" style={{ marginTop: 16 }}>
         <div className="card">
           <div className="card-header">
-            <div className="card-title">Drafts Queue</div>
-            <Link to="/content-queue" className="btn btn-sm btn-ghost">
-              View all <ArrowRight size={14} />
+            <div className="card-title">Drafts In Progress</div>
+            <Link to="/queue" className="btn btn-sm btn-ghost">
+              View queue <ArrowRight size={14} />
             </Link>
           </div>
           {draftsListLoading ? (
@@ -232,21 +216,18 @@ export function Dashboard() {
           ) : (drafts as any[])?.length === 0 ? (
             <div className="empty-state" style={{ padding: 24 }}>
               <FileText size={32} />
-              <h3>No drafts yet</h3>
-              <p>Generate content to start building your queue</p>
-              <Link to="/ai-writer" className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
-                Generate content
-              </Link>
+              <h3>No drafts</h3>
+              <p>Use AI Writer to generate content from your ideas</p>
             </div>
           ) : (
             <table className="data-table">
               <thead><tr><th>Title</th><th>Type</th><th>Score</th></tr></thead>
               <tbody>
-                {(drafts as any[])?.slice(0, 3).map((item: any) => (
+                {(drafts as any[])?.map((item: any) => (
                   <tr key={item.id}>
                     <td style={{ fontWeight: 500 }}>{item.title || 'Untitled'}</td>
                     <td><span className="tag">{item.content_type}</span></td>
-                    <td>{item.ai_score ? `${Math.round(item.ai_score * 100)}%` : '—'}</td>
+                    <td>{(item.ai_score || 0) > 0 ? `${Math.round(item.ai_score * 100)}%` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -258,7 +239,7 @@ export function Dashboard() {
           <div className="card-header">
             <div className="card-title">Needs Review</div>
             <Link to="/review" className="btn btn-sm btn-ghost">
-              View all <ArrowRight size={14} />
+              Review now <ArrowRight size={14} />
             </Link>
           </div>
           {reviewsListLoading ? (
@@ -269,17 +250,17 @@ export function Dashboard() {
             <div className="empty-state" style={{ padding: 24 }}>
               <CheckSquare size={32} />
               <h3>All caught up</h3>
-              <p>No content items awaiting review</p>
+              <p>No content items waiting for review</p>
             </div>
           ) : (
             <table className="data-table">
-              <thead><tr><th>Title</th><th>Type</th><th>Score</th></tr></thead>
+              <thead><tr><th>Title</th><th>Type</th><th>Status</th></tr></thead>
               <tbody>
-                {(reviews as any[])?.slice(0, 3).map((item: any) => (
+                {(reviews as any[])?.map((item: any) => (
                   <tr key={item.id}>
                     <td style={{ fontWeight: 500 }}>{item.title || 'Untitled'}</td>
                     <td><span className="tag">{item.content_type}</span></td>
-                    <td>{item.ai_score ? `${Math.round(item.ai_score * 100)}%` : '—'}</td>
+                    <td><span className="badge badge-review">review</span></td>
                   </tr>
                 ))}
               </tbody>
