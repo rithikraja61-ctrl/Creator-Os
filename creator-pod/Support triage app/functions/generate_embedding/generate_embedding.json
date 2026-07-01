@@ -1,0 +1,26 @@
+{
+  "code": {
+    "$file": "code.py"
+  },
+  "code_hash": "babe2c4e5bc7ece0dd79bbe5e1b8ed92bc3a17d7351ed1fae01cfddaedf58b33",
+  "config": null,
+  "description": "Generate embedding vectors for idea content",
+  "icon_url": null,
+  "name": "generate_embedding",
+  "permissions": {
+    "grants": [
+      {
+        "permission_ids": [
+          "datastore.record.read",
+          "datastore.record.write",
+          "datastore.table.read"
+        ],
+        "resource_name": "ideas",
+        "resource_type": "datastore_table"
+      }
+    ]
+  },
+  "python_packages": [],
+  "type": "API",
+  "visibility": "POD"
+}

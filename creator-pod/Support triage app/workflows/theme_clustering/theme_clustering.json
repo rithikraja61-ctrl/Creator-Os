@@ -1,0 +1,73 @@
+{
+  "description": "Cluster ideas into themes and detect trends",
+  "edges": [
+    {
+      "id": "e1",
+      "label": null,
+      "source": "confirm_run",
+      "target": "cluster"
+    },
+    {
+      "id": "e2",
+      "label": null,
+      "source": "cluster",
+      "target": "end"
+    }
+  ],
+  "icon_url": null,
+  "mode": "GLOBAL",
+  "name": "theme_clustering",
+  "nodes": [
+    {
+      "config": {
+        "assignee_pod_member_id": null,
+        "assignee_pod_member_id_expression": null,
+        "input_schema": {
+          "properties": {
+            "confirm": {
+              "description": "Confirm to run theme clustering on all ideas",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "confirm"
+          ],
+          "type": "object"
+        },
+        "ui_schema": null
+      },
+      "id": "confirm_run",
+      "label": "Run Clustering",
+      "position": null,
+      "type": "FORM"
+    },
+    {
+      "config": {
+        "agent_name": "theme_clusterer",
+        "input_mapping": {
+          "trigger": {
+            "optional": false,
+            "type": "expression",
+            "value": "confirm_run.confirm"
+          }
+        }
+      },
+      "id": "cluster",
+      "label": "Cluster Ideas",
+      "position": null,
+      "type": "AGENT"
+    },
+    {
+      "config": {},
+      "id": "end",
+      "label": "Complete",
+      "position": null,
+      "type": "END"
+    }
+  ],
+  "start": {
+    "config": null,
+    "type": "MANUAL"
+  },
+  "visibility": "POD"
+}

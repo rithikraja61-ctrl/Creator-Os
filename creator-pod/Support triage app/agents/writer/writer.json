@@ -1,0 +1,48 @@
+{
+  "agent_runtime": {
+    "model_name": "deepseek-v4-flash-free",
+    "profile_id": "019f12c3-f4c5-74eb-bd0c-175f92351314"
+  },
+  "description": "AI Writer that generates various content formats from ideas",
+  "icon_url": null,
+  "input_schema": null,
+  "instruction": {
+    "$file": "instruction.md"
+  },
+  "metadata": null,
+  "name": "writer",
+  "output_schema": null,
+  "permissions": {
+    "grants": [
+      {
+        "permission_ids": [
+          "datastore.record.read",
+          "datastore.table.read"
+        ],
+        "resource_name": "ideas",
+        "resource_type": "datastore_table"
+      },
+      {
+        "permission_ids": [
+          "datastore.record.read",
+          "datastore.table.read"
+        ],
+        "resource_name": "themes",
+        "resource_type": "datastore_table"
+      },
+      {
+        "permission_ids": [
+          "datastore.record.read",
+          "datastore.record.write",
+          "datastore.table.read"
+        ],
+        "resource_name": "content_items",
+        "resource_type": "datastore_table"
+      }
+    ]
+  },
+  "toolsets": [
+    "POD"
+  ],
+  "visibility": "POD"
+}

@@ -1,0 +1,25 @@
+{
+  "code": {
+    "$file": "code.py"
+  },
+  "code_hash": "ba216c3ab9c884e3806a9c26e802abba9bc228410881ee67099055cb083417e0",
+  "config": null,
+  "description": "Search ideas by semantic similarity using vector embeddings",
+  "icon_url": null,
+  "name": "semantic_search",
+  "permissions": {
+    "grants": [
+      {
+        "permission_ids": [
+          "datastore.record.read",
+          "datastore.table.read"
+        ],
+        "resource_name": "ideas",
+        "resource_type": "datastore_table"
+      }
+    ]
+  },
+  "python_packages": [],
+  "type": "API",
+  "visibility": "POD"
+}

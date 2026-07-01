@@ -1,0 +1,34 @@
+{
+  "name": "creator-app",
+  "title": "Content Creator",
+  "template": "lemma-vite",
+  "podId": "019eff5b-44e8-74e7-9dfb-55b423096755",
+  "stylePreset": "soft",
+  "preferredStylePresets": [
+    "neobrutal",
+    "editorial",
+    "soft",
+    "terminal"
+  ],
+  "runtime": {
+    "apiUrl": "http://backend:8000",
+    "authUrl": "http://localhost:3711",
+    "appBasePath": "/"
+  },
+  "legacyInitHints": {
+    "navigation": "sidebar",
+    "agentName": null,
+    "chatMode": "right-sidebar",
+    "members": false,
+    "search": null,
+    "themeToggle": true
+  },
+  "aiEditingContract": {
+    "primaryInstruction": "Build the app as a native React app. Replace sample feature routes and data with the real operator workflow.",
+    "avoid": [
+      "Do not preserve sample dashboard/tasks/users/chats/apps pages unless they match the workflow.",
+      "Do not add registry blocks or generated registry structure.",
+      "Do not make a landing page; the first screen should start with work."
+    ]
+  }
+}

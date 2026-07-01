@@ -1,0 +1,7 @@
+{
+  "contents": {},
+  "description": "Each incoming ticket opens with a drafted reply, urgency, and a suggested owner.",
+  "format_version": 2,
+  "icon_url": null,
+  "name": "Support triage app"
+}

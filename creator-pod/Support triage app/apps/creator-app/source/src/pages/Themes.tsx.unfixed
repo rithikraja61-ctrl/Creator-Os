@@ -1,0 +1,568 @@
+import { useState, useEffect } from 'react'
+import { useRecords } from 'lemma-sdk/react'
+import { lemmaClient } from '../lemma-client'
+import { onTableChange } from '../lib/refresh-bus'
+import { Palette, TrendingUp, Sparkles, CheckCircle, AlertCircle, FolderOpen, FileText, Eye, ChevronDown, ChevronUp } from 'lucide-react'
+
+export function Themes() {
+  const podId = lemmaClient.podId
+  const [isClustering, setIsClustering] = useState(false)
+  const [clusterResult, setClusterResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [expandedTheme, setExpandedTheme] = useState<string | null>(null)
+  const [themeWorkspace, setThemeWorkspace] = useState<Record<string, any>>({})
+
+  const { records: themes, isLoading, refresh } = useRecords({
+    client: lemmaClient, podId, tableName: 'themes', limit: 50,
+    sort: [{ field: 'trend_score', direction: 'desc' }]
+  })
+
+  const { records: ideas, refresh: refreshIdeas } = useRecords({
+    client: lemmaClient, podId, tableName: 'ideas', limit: 500
+  })
+
+  const { records: content, refresh: refreshContent } = useRecords({
+    client: lemmaClient, podId, tableName: 'content_items', limit: 500
+  })
+
+  const { records: sources, refresh: refreshSources } = useRecords({
+    client: lemmaClient, podId, tableName: 'sources', limit: 500
+  })
+
+  // DEBUG: Log at component render start
+  console.log('[Themes] RENDER START', {
+    themesCount: themes?.length,
+    ideasCount: ideas?.length,
+    contentCount: content?.length,
+    expandedTheme,
+    themeWorkspaceKeys: Object.keys(themeWorkspace),
+  })
+
+  // DEBUG: Before map/filter on ideas
+  console.log('[Themes] ideas.map() called, ideas=', ideas?.length, typeof ideas, Array.isArray(ideas))
+  const ideasById = new Map(ideas.map((i: any) => {
+    console.log('[Themes]  ideas.map item', i?.id, i?.title?.substring(0,30))
+    return [i.id, i]
+  }))
+
+  // DEBUG: Before map/filter on content
+  console.log('[Themes] content.map() called, content=', content?.length, typeof content, Array.isArray(content))
+  const contentById = new Map(content.map((c: any) => {
+    console.log('[Themes]  content.map item', c?.id, c?.title?.substring(0,30))
+    return [c.id, c]
+  }))
+
+  // Auto-refresh when themes or ideas table changes
+  useEffect(() => {
+    console.log('[Themes] useEffect: subscribe themes')
+    const unsub = onTableChange('themes', () => refresh())
+    return unsub
+  }, [refresh])
+
+  useEffect(() => {
+    console.log('[Themes] useEffect: subscribe ideas')
+    const unsub = onTableChange('ideas', () => refreshIdeas())
+    return unsub
+  }, [refreshIdeas])
+
+  useEffect(() => {
+    console.log('[Themes] useEffect: subscribe content_items')
+    const unsub = onTableChange('content_items', () => refreshContent())
+    return unsub
+  }, [refreshContent])
+
+  useEffect(() => {
+    console.log('[Themes] useEffect: subscribe sources')
+    const unsub = onTableChange('sources', () => refreshSources())
+    return unsub
+  }, [refreshSources])
+
+  // Build workspace data for expanded themes
+  useEffect(() => {
+    console.log('[Themes] WORKSPACE useEffect triggered', { themesLen: themes.length, ideasLen: ideas.length, contentLen: content.length })
+    console.log('[Themes] themes before filtering:', themes.map((t: any) => ({ id: t.id, name: t.name, idea_ids: t.idea_ids })))
+    
+    if (themes.length === 0 || ideas.length === 0 || content.length === 0) {
+      console.log('[Themes] WORKSPACE useEffect EARLY RETURN - data not ready')
+      return
+    }
+    
+    const workspace: Record<string, any> = {}
+    
+    // DEBUG: Before forEach
+    console.log('[Themes] ABOUT TO CALL themes.forEach()', themes.length)
+    
+    themes.forEach((theme: any) => {
+      console.log('[Themes]  theme.forEach item', theme?.id, theme?.name)
+      try {
+        let ids: string[] = []
+        console.log('[Themes]   parsing idea_ids for theme', theme.id, 'idea_ids=', theme.idea_ids, typeof theme.idea_ids)
+        
+        if (theme.idea_ids) {
+          if (typeof theme.idea_ids === 'string') {
+            ids = JSON.parse(theme.idea_ids)
+              console.log('[Themes]   parsed string idea_ids', ids, Array.isArray(ids))
+              if (!Array.isArray(ids)) ids = []
+            } catch {
+              console.log('[Themes]   JSON.parse failed')
+              ids = []
+            }
+          } else if (Array.isArray(theme.idea_ids)) {
+            ids = theme.idea_ids
+            console.log('[Themes]   using array idea_ids', ids)
+          } else {
+            console.log('[Themes]   unknown idea_ids type:', typeof theme.idea_ids, theme.idea_ids)
+          }
+        } else {
+          console.log('[Themes]   idea_ids is falsy', theme.idea_ids)
+        }
+        
+        // DEBUG: Before ids.map()
+        console.log('[Themes]   ABOUT TO ids.map()', ids, ids.length)
+        const workspaceIdeas = ids.map((id: string) => {
+          console.log('[Themes]    ids.map item', id, 'found=', ideasById.has(id), 'value=', ideasById.get(id))
+          return ideasById.get(id)
+        }).filter(Boolean)
+        console.log('[Themes]   workspaceIdeas after filter:', workspaceIdeas.length)
+        
+        const workspaceFiles: any[] = []
+        const workspaceContent: any[] = []
+        
+        // DEBUG: Before workspaceIdeas.forEach()
+        console.log('[Themes]   ABOUT TO workspaceIdeas.forEach()', workspaceIdeas.length)
+        workspaceIdeas.forEach((idea: any) => {
+          console.log('[Themes]    workspaceIdeas.forEach item', idea.id, idea.title?.substring(0,30))
+          
+          if (idea.source_ref && idea.source_ref.startsWith('/')) {
+            console.log('[Themes]    pushing file from source_ref', idea.source_ref)
+            workspaceFiles.push({
+              name: idea.title || 'Unnamed file',
+              title: `Attached to: ${idea.title || 'Idea'}`
+            })
+          }
+          
+          // DEBUG: Before content.filter()
+          console.log('[Themes]    ABOUT TO content.filter(c => c.idea_id === idea.id)', 
+            'idea.id=', idea.id, 'content.length=', content.length)
+          content.filter((c: any) => {
+            console.log('[Themes]     content.filter item', c.id, 'c.idea_id=', c.idea_id, '=== idea.id?', c.idea_id === idea.id)
+            return c.idea_id === idea.id
+          }).forEach((c: any) => {
+            console.log('[Themes]     pushing content item to workspace', c.id, c.title?.substring(0,30))
+            workspaceContent.push(c)
+          })
+        })
+        
+        workspace[theme.id] = {
+          ideas: workspaceIdeas,
+          files: workspaceFiles,
+          content: workspaceContent
+        }
+        console.log('[Themes]   workspace set for theme', theme.id, {
+          ideas: workspaceIdeas.length,
+          files: workspaceFiles.length,
+          content: workspaceContent.length
+        })
+      } catch (e) {
+        console.log('[Themes]   CAUGHT in workspace forEach:', e)
+        workspace[theme.id] = { ideas: [], files: [], content: [] }
+      }
+    })
+    
+    console.log('[Themes] ABOUT TO setThemeWorkspace, workspace keys:', Object.keys(workspace))
+    setThemeWorkspace(workspace)
+    console.log('[Themes] setThemeWorkspace DONE')
+  }, [themes, ideas, content])
+
+  function parseIds(theme: any): string[] {
+    console.log('[Themes] parseIds called for theme', theme?.id, theme?.name, 'idea_ids:', theme?.idea_ids)
+    try {
+      const ids = typeof theme.idea_ids === 'string' ? JSON.parse(theme.idea_ids) : theme.idea_ids
+      console.log('[Themes] parseIds result', ids, Array.isArray(ids))
+      return Array.isArray(ids) ? ids : []
+    } catch { 
+      console.log('[Themes] parseIds caught error')
+      return [] 
+    }
+  }
+
+  function parseKeywords(theme: any): string[] {
+    const kw = typeof theme.keywords === 'string' ? JSON.parse(theme.keywords) : theme.keywords
+    return Array.isArray(kw) ? kw : []
+  }
+
+  async function handleCluster() {
+    console.log('[Themes] handleCluster called')
+    if (isClustering) return
+    console.log('[Themes] setIsClustering(true)')
+    setIsClustering(true)
+    console.log('[Themes] setClusterResult(null)')
+    setClusterResult(null)
+    try {
+      const result = await lemmaClient.agents.run('theme_clusterer',
+        'Analyze all non-archived ideas from the ideas table. ' +
+        'Group similar ideas into coherent themes. ' +
+        'Create new theme records in the themes table and update existing ones. ' +
+        'Remove themes that no longer have any associated ideas. ' +
+        'Return a detailed summary of what was created, updated, or removed.'
+      )
+      const summary = typeof result === 'string' ? result :
+                      (result as any)?.response || (result as any)?.output || JSON.stringify(result)
+      console.log('[Themes] setClusterResult(success)')
+      setClusterResult({ type: 'success', message: summary })
+      refresh()
+    } catch (err) {
+      console.error('Clustering failed:', err)
+      console.log('[Themes] setClusterResult(error)')
+      setClusterResult({
+        type: 'error',
+        message: `Clustering failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+      })
+    } finally {
+      console.log('[Themes] setIsClustering(false)')
+      setIsClustering(false)
+    }
+  }
+
+  function expandTheme(theme: any) {
+    // LOG 1: At start of handler
+    console.log('=== [Themes] THEME CLICK HANDLER START ===', { themeId: theme?.id, themeName: theme?.name })
+    
+    const newExpanded = expandedTheme === theme.id ? null : theme.id
+    
+    // LOG before setState
+    console.log('=== [Themes] BEFORE setExpandedTheme ===', { oldValue: expandedTheme, newValue: newExpanded })
+    setExpandedTheme(newExpanded)
+    console.log('=== [Themes] AFTER setExpandedTheme ===')
+  }
+
+  function formatAgentSummary(text: string): React.ReactNode {
+    const lines = text.split('\n')
+    const summaryStart = Math.max(
+      text.lastIndexOf('## ✅ Clustering Summary'),
+      text.lastIndexOf('## Summary'),
+      text.lastIndexOf('Themes'),
+    )
+    if (summaryStart >= 0) {
+      return text.substring(summaryStart)
+    }
+    if (text.length > 1000) {
+      return '…' + text.substring(text.length - 800)
+    }
+    return text
+  }
+
+  // === RENDER START ===
+  console.log('[Themes] === RENDER RETURN ===')
+
+  // DEBUG: Log all data before render
+  console.log('[Themes] themes:', themes?.map((t: any) => ({ id: t.id, name: t.name, idea_ids: t.idea_ids })))
+  console.log('[Themes] expandedTheme:', expandedTheme)
+  console.log('[Themes] themeWorkspace keys:', Object.keys(themeWorkspace))
+  console.log('[Themes] themeWorkspace:', JSON.parse(JSON.stringify(themeWorkspace)))
+  console.log('[Themes] ideasById keys:', [...ideasById.keys()])
+  console.log('[Themes] contentById keys:', [...contentById.keys()])
+
+  DEBUG_LOG_SCOPE: {
+    console.log('[Themes] themes.map() about to be called')
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <h1>Themes</h1>
+          <p>Automatically discovered themes and trends from your ideas</p>
+        </div>
+        <button className="btn btn-primary" onClick={handleCluster} disabled={isClustering}
+          title="Run theme clustering on all non-archived ideas">
+          <Sparkles size={16} />
+          {isClustering ? 'Clustering...' : 'Cluster Themes'}
+        </button>
+      </div>
+
+      {clusterResult && (
+        <div className="card" style={{
+          marginBottom: 16, padding: 12,
+          background: clusterResult.type === 'error' ? '#fff0f0' : 'var(--accent-lighter)',
+          border: `1px solid ${clusterResult.type === 'error' ? '#ffcccc' : 'var(--accent-lighter)'}`
+        }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {clusterResult.type === 'error'
+              ? <AlertCircle size={16} style={{ color: '#e53e3e', flexShrink: 0, marginTop: 2 }} />
+              : <CheckCircle size={16} style={{ color: '#38a169', flexShrink: 0, marginTop: 2 }} />
+            }
+            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+              {clusterResult.type === 'success'
+                ? formatAgentSummary(clusterResult.message)
+                : clusterResult.message
+              }
+            </div>
+            <button
+              className="btn btn-sm btn-ghost"
+              style={{ marginLeft: 'auto', flexShrink: 0, padding: '2px 6px' }}
+              onClick={() => setClusterResult(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="card">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[1, 2, 3].map(i => {
+              console.log('[Themes] skeleton .map()', i)
+              return <div key={i} className="skeleton" style={{ height: 80 }} />
+            })}
+          </div>
+        </div>
+      ) : themes.length === 0 ? (
+        <div className="card">
+          <div className="empty-state">
+            <Palette size={40} />
+            <h3>No themes yet</h3>
+            <p>Click "Cluster Themes" to analyze your ideas and discover patterns. The AI will group related ideas into themes, detect trends, and save them here.</p>
+            {ideas.length > 0 && (
+              <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 4 }}>
+                {ideas.length} idea{ideas.length !== 1 ? 's' : ''} available for clustering
+              </p>
+            )}
+            {ideas.length === 0 && (
+              <p style={{ fontSize: 13, color: 'var(--ink-muted)', marginTop: 4 }}>
+                No ideas to cluster yet. Capture some ideas first on the Ideas page.
+              </p>
+            )}
+            <button className="btn btn-primary" style={{ marginTop: 16 }}
+              onClick={handleCluster} disabled={isClustering || ideas.length === 0}>
+              <Sparkles size={16} /> Cluster Ideas into Themes
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {themes.map((theme: any) => {
+            // DEBUG: Before processing each theme
+            console.log('[Themes] THEMES MAP START for theme', theme?.id, theme?.name)
+            console.log('[Themes]  parseIds() about to be called')
+            
+            const ids = parseIds(theme)
+            console.log('[Themes]  ids:', ids)
+            
+            console.log('[Themes]  parseKeywords() about to be called')
+            const keywords = parseKeywords(theme)
+            console.log('[Themes]  keywords:', keywords)
+            
+            const score = theme.trend_score || 0
+            console.log('[Themes]  score:', score)
+            
+            // DEBUG: Before linkedIdeas mapping
+            console.log('[Themes]  ids.map(id => ideasById.get(id)) about to run')
+            console.log('[Themes]  ids:', ids, 'ideasById has keys for:', ids.filter(id => ideasById.has(id)))
+            const linkedIdeas = ids.map((id: string) => {
+              console.log('[Themes]   ids.map for id=', id, 'found=', ideasById.has(id), 'result=', ideasById.get(id))
+              return ideasById.get(id)
+            }).filter(Boolean)
+            console.log('[Themes]  linkedIdeas:', linkedIdeas.length, linkedIdeas.map((i: any) => i?.id))
+            
+            const isExpanded = expandedTheme === theme.id
+            console.log('[Themes]  isExpanded:', isExpanded, 'expandedTheme:', expandedTheme, 'theme.id:', theme.id)
+            
+            const workspace = themeWorkspace[theme.id]
+            console.log('[Themes]  workspace for theme:', theme.id, workspace)
+            
+            const workspaceIdeas = workspace.ideas || []
+            console.log('[Themes]  workspaceIdeas:', workspaceIdeas.length)
+            
+            const workspaceFiles = workspace.files || []
+            console.log('[Themes]  workspaceFiles:', workspaceFiles.length)
+            
+            const workspaceContent = workspace.content || []
+            console.log('[Themes]  workspaceContent:', workspaceContent.length)
+            
+            // DEBUG: Before content.filter
+            console.log('[Themes]  ABOUT TO content.filter(c => c.idea_id && ids.includes(c.idea_id)).length')
+            console.log('[Themes]  content.length:', content?.length, 'ids:', ids)
+            console.log('[Themes]  content items:', content?.map((c: any) => ({ id: c.id, idea_id: c.idea_id })))
+            const wsContentCount = content.filter((c: any) => {
+              const match = c.idea_id && ids.includes(c.idea_id)
+              console.log('[Themes]   content.filter check:', c?.id, 'idea_id:', c?.idea_id, 'in ids?', match)
+              return match
+            }).length
+            console.log('[Themes]  wsContentCount:', wsContentCount)
+            
+            // DEBUG: Before linkedIdeas.filter
+            console.log('[Themes]  ABOUT TO linkedIdeas.filter(i => i.source_ref && i.source_ref.startsWith("/")).length')
+            console.log('[Themes]  linkedIdeas:', linkedIdeas.map((i: any) => ({ id: i?.id, source_ref: i?.source_ref })))
+            const wsFileCount = linkedIdeas.filter((i: any) => {
+              const match = i.source_ref && i.source_ref.startsWith('/')
+              console.log('[Themes]   linkedIdeas.filter check:', i.id, 'source_ref:', i.source_ref, 'match:', match)
+              return match
+            }).length
+            console.log('[Themes]  wsFileCount:', wsFileCount)
+
+            return (
+              <div key={theme.id}>
+                <div
+                  className="card"
+                  style={{ cursor: 'pointer', borderLeft: isExpanded ? '3px solid var(--accent)' : undefined }}
+                  onClick={() => expandTheme(theme)}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                    <div className={`score-ring ${score >= 0.7 ? 'score-high' : score >= 0.4 ? 'score-mid' : 'score-low'}`}
+                      style={{ width: 48, height: 48, fontSize: 14, flexShrink: 0 }}>
+                      {Math.round(score * 100)}%
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 600 }}>{theme.name}</h3>
+                        <TrendingUp size={16} style={{ color: score >= 0.7 ? 'var(--green)' : 'var(--ink-muted)' }} />
+                      </div>
+                      {theme.description && (
+                        <p style={{ color: 'var(--ink-secondary)', fontSize: 13, marginBottom: 8 }}>{theme.description}</p>
+                      )}
+                      {keywords.length > 0 && (
+                        <div className="tag-group" style={{ marginBottom: 8 }}>
+                          {keywords.map((kw: string) => {
+                            console.log('[Themes]   keywords.map:', kw)
+                            return <span key={kw} className="tag tag-sm">{kw}</span>
+                          })}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--ink-muted)' }}>
+                        <span><Eye size={12} style={{ display: 'inline' }} /> {linkedIdeas.length} ideas</span>
+                        <span><FileText size={12} style={{ display: 'inline' }} /> {wsContentCount} content items</span>
+                        <span><FolderOpen size={12} style={{ display: 'inline' }} /> {wsFileCount} files</span>
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      style={{ flexShrink: 0 }}
+                      onClick={(e) => { e.stopPropagation(); expandTheme(theme) }}
+                    >
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="card" style={{ marginTop: 2, padding: 16, borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <FolderOpen size={16} style={{ color: 'var(--accent)' }} />
+                          {theme.name} — Workspace
+                        </h3>
+                        <button
+                          onClick={() => {
+                            console.log('[Themes] Collapse button clicked')
+                            setExpandedTheme(null)
+                          }}
+                          className="btn btn-sm btn-ghost"
+                          style={{ color: 'var(--ink-muted)' }}
+                        >
+                          Collapse
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                        {/* Column 1: Ideas */}
+                        <div className="card" style={{ padding: 12 }}>
+                          <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-secondary)', marginBottom: 8 }}>
+                            Ideas ({workspaceIdeas.length})
+                          </h4>
+                          {workspaceIdeas.length === 0 ? (
+                            <p style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>No linked ideas</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {workspaceIdeas.map((idea: any) => {
+                                console.log('[Themes]  workspaceIdeas.map:', idea.id, idea.title?.substring(0,30))
+                                return (
+                                <div key={idea.id} style={{
+                                  padding: '6px 8px', background: 'var(--bg)',
+                                  borderRadius: 'var(--radius-sm)', fontSize: 12
+                                }}>
+                                  <div style={{ fontWeight: 500, marginBottom: 2 }}>{idea.title || 'Untitled'}</div>
+                                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                    <span className="tag tag-sm">{idea.source_type}</span>
+                                    <span className={`badge badge-${idea.status}`} style={{ fontSize: 9, padding: '1px 4px' }}>{idea.status}</span>
+                                  </div>
+                                </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Column 2: Files */}
+                        <div className="card" style={{ padding: 12 }}>
+                          <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-secondary)', marginBottom: 8 }}>
+                            Files ({workspaceFiles.length})
+                          </h4>
+                          {workspaceFiles.length === 0 ? (
+                            <p style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>No files attached to ideas in this theme</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {workspaceFiles.map((file: any, idx: number) => {
+                                console.log('[Themes]  workspaceFiles.map:', idx, file.name)
+                                return (
+                                <div key={idx} style={{
+                                  padding: '6px 8px', background: 'var(--bg)',
+                                  borderRadius: 'var(--radius-sm)', fontSize: 12
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <FileText size={12} style={{ color: 'var(--ink-muted)', flexShrink: 0 }} />
+                                    <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                                  </div>
+                                  <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 2 }}>
+                                    from: {file.title}
+                                  </div>
+                                </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Column 3: Generated Content */}
+                        <div className="card" style={{ padding: 12 }}>
+                          <h4 style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-secondary)', marginBottom: 8 }}>
+                            Generated Content ({workspaceContent.length})
+                          </h4>
+                          {workspaceContent.length === 0 ? (
+                            <p style={{ fontSize: 12, color: 'var(--ink-muted)', fontStyle: 'italic' }}>No content generated from this theme's ideas yet</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {workspaceContent.map((item: any) => {
+                                console.log('[Themes]  workspaceContent.map:', item.id, item.title?.substring(0,30))
+                                return (
+                                <div key={item.id} style={{
+                                  padding: '6px 8px', background: 'var(--bg)',
+                                  borderRadius: 'var(--radius-sm)', fontSize: 12
+                                }}>
+                                  <div style={{ fontWeight: 500, marginBottom: 2 }}>{item.title || 'Untitled'}</div>
+                                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span className="tag tag-sm">{item.content_type}</span>
+                                    <span className={`badge badge-${item.status}`} style={{ fontSize: 9, padding: '1px 4px' }}>{item.status}</span>
+                                    {item.ai_score > 0 && (
+                                      <span style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{Math.round(item.ai_score * 100)}%</span>
+                                    )}
+                                  </div>
+                                </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,17 @@
+{
+  "agent_runtime": null,
+  "description": "a",
+  "icon_url": "/agent-mascots/mascot-think.png",
+  "input_schema": null,
+  "instruction": {
+    "$file": "instruction.md"
+  },
+  "metadata": null,
+  "name": "a",
+  "output_schema": null,
+  "permissions": {
+    "grants": []
+  },
+  "toolsets": [],
+  "visibility": "POD"
+}

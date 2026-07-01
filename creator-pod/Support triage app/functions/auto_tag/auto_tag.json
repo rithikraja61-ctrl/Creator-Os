@@ -1,0 +1,26 @@
+{
+  "code": {
+    "$file": "code.py"
+  },
+  "code_hash": "7a15407bae0e37a1e474c5117451cac2cf90c631d282a044ba3325c73f987f52",
+  "config": null,
+  "description": "Auto-tag an idea by analyzing its content using AI",
+  "icon_url": null,
+  "name": "auto_tag",
+  "permissions": {
+    "grants": [
+      {
+        "permission_ids": [
+          "datastore.record.read",
+          "datastore.record.write",
+          "datastore.table.read"
+        ],
+        "resource_name": "ideas",
+        "resource_type": "datastore_table"
+      }
+    ]
+  },
+  "python_packages": [],
+  "type": "API",
+  "visibility": "POD"
+}

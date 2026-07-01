@@ -1,0 +1,121 @@
+{
+  "description": "Generate content from an idea and have it reviewed",
+  "edges": [
+    {
+      "id": "e1",
+      "label": null,
+      "source": "intake",
+      "target": "generate"
+    },
+    {
+      "id": "e2",
+      "label": null,
+      "source": "generate",
+      "target": "review"
+    },
+    {
+      "id": "e3",
+      "label": null,
+      "source": "review",
+      "target": "end"
+    }
+  ],
+  "icon_url": null,
+  "mode": "GLOBAL",
+  "name": "content_pipeline",
+  "nodes": [
+    {
+      "config": {
+        "assignee_pod_member_id": null,
+        "assignee_pod_member_id_expression": null,
+        "input_schema": {
+          "properties": {
+            "content_type": {
+              "default": "linkedin_post",
+              "enum": [
+                "linkedin_post",
+                "twitter_thread",
+                "blog_post",
+                "youtube_script",
+                "instagram_caption",
+                "newsletter"
+              ],
+              "type": "string"
+            },
+            "idea_id": {
+              "description": "ID of the idea to generate content from",
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "idea_id",
+            "content_type"
+          ],
+          "type": "object"
+        },
+        "ui_schema": null
+      },
+      "id": "intake",
+      "label": "Content Request",
+      "position": null,
+      "type": "FORM"
+    },
+    {
+      "config": {
+        "agent_name": "writer",
+        "input_mapping": {
+          "content_type": {
+            "optional": false,
+            "type": "expression",
+            "value": "intake.content_type"
+          },
+          "idea_id": {
+            "optional": false,
+            "type": "expression",
+            "value": "intake.idea_id"
+          },
+          "title": {
+            "optional": false,
+            "type": "expression",
+            "value": "intake.title"
+          }
+        }
+      },
+      "id": "generate",
+      "label": "Generate Content",
+      "position": null,
+      "type": "AGENT"
+    },
+    {
+      "config": {
+        "agent_name": "reviewer",
+        "input_mapping": {
+          "content_item_id": {
+            "optional": false,
+            "type": "expression",
+            "value": "generate.content_item_id"
+          }
+        }
+      },
+      "id": "review",
+      "label": "Review Content",
+      "position": null,
+      "type": "AGENT"
+    },
+    {
+      "config": {},
+      "id": "end",
+      "label": "Done",
+      "position": null,
+      "type": "END"
+    }
+  ],
+  "start": {
+    "config": null,
+    "type": "MANUAL"
+  },
+  "visibility": "POD"
+}
